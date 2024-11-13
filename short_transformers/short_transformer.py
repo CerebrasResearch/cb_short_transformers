@@ -2,6 +2,7 @@ from functools import partial, wraps
 
 import numpy as np
 import torch
+import random
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 
@@ -16,7 +17,6 @@ class Memory:
         self.examples_count: int = -1
         self.result = np.zeros((layer_count, layer_count))
         self.layers_outputs: dict = {}
-
 
 class ShortTransformer(PreTrainedModel):
     @classmethod
@@ -114,7 +114,8 @@ class ShortTransformer(PreTrainedModel):
         key: str = "content",
         limit: int = 1,
         max_length: int = 1000,
-        batch_size: int = 1
+        batch_size: int = 1,
+        max_length_samples_only=False,
     ) -> None:
         if tokenizer is None:
             logger.debug(
@@ -135,20 +136,27 @@ class ShortTransformer(PreTrainedModel):
         if batch_size > 1:
             dataset = dataset.map(ShortTransformer.group_batch, batched=True, batch_size=batch_size)
 
+        if use_chat_template:
+            dataset = dataset.map(lambda x: {key: tokenizer.apply_chat_template(x[key], tokenize=False, add_generation_prompt=False)}, desc='Adding chat template')
+
         with torch.no_grad():
             count = 0
-            for d in tqdm(dataset):
-                content = d[key]
-                if use_chat_template:
-                    inputs = tokenizer.apply_chat_template(content, tokenize=True, add_generation_prompt=False)
-                else:
-                    inputs = tokenizer(
-                        content,
-                        return_tensors="pt",
-                        padding=True if batch_size>1 else False,
-                        truncation=True,
-                        max_length=max_length,
-                    ).to(model.device)
+            for _ in range(limit):
+                i = random.randint(0, len(dataset) - 1)
+                content = dataset[i][key]
+                inputs = tokenizer(
+                    content,
+                    return_tensors="pt",
+                    padding=True if batch_size>1 else False,
+                    truncation=True,
+                    max_length=max_length,
+                    add_special_tokens=False if use_chat_template else True,
+                    padding_side='left',
+                ).to(model.device)
+                if max_length_samples_only:
+                    if inputs.input_ids.shape[1]<max_length:
+                        # print(f"{inputs.input_ids.shape[1]}<{max_length}, skipping sample")
+                        continue
                 model(**inputs)
                 count += batch_size
                 if count >= limit:
@@ -189,8 +197,9 @@ class ShortTransformer(PreTrainedModel):
 
         return model
 
-    @staticmethod
+    @classmethod
     def remove_layers(
+        cls,
         model,
         tokenizer,
         block_size,
