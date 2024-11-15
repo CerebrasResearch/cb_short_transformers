@@ -137,11 +137,11 @@ class ShortTransformer(PreTrainedModel):
             dataset = dataset.map(ShortTransformer.group_batch, batched=True, batch_size=batch_size)
 
         if use_chat_template:
-            dataset = dataset.map(lambda x: {key: tokenizer.apply_chat_template(x[key], tokenize=False, add_generation_prompt=False)}, desc='Adding chat template')
+            dataset = dataset.map(lambda x: {key: tokenizer.apply_chat_template(x[key], tokenize=False, add_generation_prompt=False)}, desc='Adding chat template', num_proc=8)
 
         with torch.no_grad():
             count = 0
-            for _ in range(limit):
+            while True:
                 i = random.randint(0, len(dataset) - 1)
                 content = dataset[i][key]
                 inputs = tokenizer(
