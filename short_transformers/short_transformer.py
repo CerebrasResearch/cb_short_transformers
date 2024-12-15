@@ -209,6 +209,7 @@ class ShortTransformer(PreTrainedModel):
         batch_size=1,
         max_length=1000,
         return_outputs=False,
+        max_length_samples_only=False
     ):
         assert batch_size == 1, "batch_size > 1 is not supported yet."
         result = model.analyse_layers(
@@ -217,6 +218,7 @@ class ShortTransformer(PreTrainedModel):
             key=key,
             limit=limit,
             max_length=max_length,
+            max_length_samples_only=max_length_samples_only
         )
         logger.debug(f"Choosing optimal {block_size}-layers block to prune.")
         start_layer = get_best_pruning_start(result=result, block_size=block_size)
